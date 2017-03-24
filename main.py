@@ -20,9 +20,15 @@ def load_csv(file_name):
     if ".csv" in file_name:
         try:
             with open(file_name) as f:
+                skipped = 0 # lines skipped due to invalid characters
                 reader = csv.reader(f)
                 for row in reader:
-                    data.append([float(datum) for datum in row])
+                    try:
+                        data.append([float(datum) for datum in row])
+                    except ValueError:
+                        skipped += 1
+                if skipped > 0: 
+                    logging.warning(str(skipped) + " lines were skipped.")
             return np.array(data)       
         except IOError:
             logging.error("Error occurred while reading file.")
@@ -79,13 +85,29 @@ class NN_Network:
     def test(self, arr):
         sum_error = 0
         for row in arr:
-            print "\033[93m"+str(float(self.feed_forward(row[:-1])))+", "+str(row[-1])
             sum_error += abs(row[-1]-self.feed_forward(row[:-1]))
         return sum_error/len(arr)
 
 if __name__ == "__main__":
-    training = load_csv("data/verify.csv")
-    neural_net = NN_Network([3,5,1]) # has two layers of size 4 and 1, accepts input of size 3
-    neural_net.train(training)
-    test = load_csv("data/test.csv")
-    print "\nAverage error on test is: " + str(float(neural_net.test(test)))
+    print "-fold" in sys.argv
+    if "-fold" not in sys.argv or sys.argv.index("-fold")==len(sys.argv)-1:
+        # Separate training and test files
+        training = load_csv("data/verify.csv")
+        test = load_csv("data/test.csv")
+        neural_net = NN_Network([3,5,1])
+        neural_net.train(training)
+        print "\nAverage error on test is: \033[91m" + str(float(neural_net.test(test)))
+    else:
+        try:
+            fold_number = int(sys.argv[sys.argv.index("-fold")+1])
+        except ValueError:
+            raise SyntaxError("Syntax error in specifying number of folds.")
+        data = load_csv("data/arrhythmia.csv")
+        for fold in range(fold_number):
+            neural_net = NN_Network([279,5,1])
+            training1 = data[:fold*len(data)/fold_number]
+            test = data[fold*len(data)/fold_number : (fold+1)*len(data)/fold_number]
+            training2 = data[(fold+1)*len(data)/fold_number:]
+            neural_net.train(training1)
+            neural_net.train(training2)
+            print "\nAverage error on fold #" + str(fold) + " test is: " + str(float(neural_net.test(test)))
