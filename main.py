@@ -1,9 +1,11 @@
 import csv
 import logging
 import numpy as np
+import math
 import sys
 
 LEARNING_RATE = 0.05
+DROPOUT_P = 0.5
 
 # Helper functions for output squashing and backprop
 def tanh(in_array):
@@ -59,6 +61,7 @@ class NN_Network:
 
     def __init__(self, sizes):
         # Initialize NN_Layer objects according to supplied sizes
+        self.sizes = sizes
         self.layers = [NN_Layer(sizes[i], sizes[i+1]) for i in np.arange(len(sizes)-1)]
 
     def feed_forward(self, arr):
@@ -69,11 +72,13 @@ class NN_Network:
 
     def backprop(self,output,expected):
         """Performs backpropagation through the neural network for one entry, using squared error"""
-        error = expected-output
+        error = expected-output # gradient of the quadratic cost function
+        error += sum([np.sum(layer.weights) for layer in self.layers])/sum(self.sizes[:-1])*REGULARIZATION_COEFF  # gradient of L2 regularization penalty
         for layer in self.layers[::-1]:
+            layer.bias = layer.bias + error * LEARNING_RATE
             delta = np.multiply(error, tanh_(layer.output))
             error = np.dot(delta, layer.weights.T)
-            layer.weights += np.dot(layer.input.T, delta)
+            layer.weights += np.dot(layer.input.T, delta) * LEARNING_RATE
 
     def train(self, arr):
         """Takes a 2D array of floats as input, formatted with last item as labels and all others as attributes"""
@@ -85,29 +90,35 @@ class NN_Network:
     def test(self, arr):
         sum_error = 0
         for row in arr:
-            sum_error += abs(row[-1]-self.feed_forward(row[:-1]))
+            ff_result = float(self.feed_forward(row[:-1]))
+            print str(row[-1]) + "  -->  " + str(ff_result)
+            sum_error += abs(row[-1]-ff_result)
         return sum_error/len(arr)
 
 if __name__ == "__main__":
-    print "-fold" in sys.argv
-    if "-fold" not in sys.argv or sys.argv.index("-fold")==len(sys.argv)-1:
-        # Separate training and test files
-        training = load_csv("data/verify.csv")
-        test = load_csv("data/test.csv")
-        neural_net = NN_Network([3,5,1])
+    if "-fold" != sys.argv[1]:
+        # Do 20% testing and 80% training by default
+        data = load_csv("data/verify.csv")
+        if int(sys.argv[1]) != len(data[0])-1:
+            raise ValueError("\033[91mInput layer ("+sys.argv[1]+") and data ("+str(len(data[0])-1)+") do not match. Terminating...\033[0m")
+        training = data[:4*len(data)/5]
+        test = data[4*len(data)/5:]
+        neural_net = NN_Network([int(arg) for arg in sys.argv[1:]])
         neural_net.train(training)
-        print "\nAverage error on test is: \033[91m" + str(float(neural_net.test(test)))
+        print "\nAverage error on test is: \033[91m" + str(neural_net.test(test))
     else:
         try:
-            fold_number = int(sys.argv[sys.argv.index("-fold")+1])
+            fold_number = int(sys.argv[2])
         except ValueError:
             raise SyntaxError("Syntax error in specifying number of folds.")
-        data = load_csv("data/arrhythmia.csv")
+        data = load_csv("data/verify.csv")
+        if int(sys.argv[3]) != len(data[0])-1:
+            raise ValueError("\033[91mInput layer ("+sys.argv[3]+") and data ("+str(len(data[0])-1)+") do not match. Terminating...\033[0m")
         for fold in range(fold_number):
-            neural_net = NN_Network([279,5,1])
+            neural_net = NN_Network([int(arg) for arg in sys.argv[3:]])
             training1 = data[:fold*len(data)/fold_number]
             test = data[fold*len(data)/fold_number : (fold+1)*len(data)/fold_number]
             training2 = data[(fold+1)*len(data)/fold_number:]
             neural_net.train(training1)
             neural_net.train(training2)
-            print "\nAverage error on fold #" + str(fold) + " test is: " + str(float(neural_net.test(test)))
+            print "\nAverage error on fold #" + str(fold) + " test is: " + str(neural_net.test(test))
